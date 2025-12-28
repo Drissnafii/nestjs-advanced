@@ -1,6 +1,7 @@
 ---
 layout: cover
 background: https://uploads.teachablecdn.com/attachments/X4kQAMQaSaWqE5HEqYyz_background.png
+transition: fade
 ---
 
 # Advanced Nest JS
@@ -249,13 +250,83 @@ layout: section
 ---
 
 # Part 2: Interceptors
-## Transform data before & after
+## Transformer les données avant & après
 
 ---
 
-# 🤔 The Problem: Inconsistent API Responses
+# 🔧 Avant de commencer : C'est quoi RxJS ?
 
-Your frontend team is frustrated...
+Les Interceptors utilisent **RxJS** (Reactive Extensions for JavaScript).
+
+<br>
+
+### L'Analogie du Tuyau 🚿
+
+Imagine un **tuyau d'eau** :
+- L'eau (les données) coule dans le tuyau
+- Tu peux ajouter des **filtres** au milieu du tuyau
+- Chaque filtre transforme l'eau qui passe
+
+```typescript
+// RxJS = un tuyau avec des opérateurs
+donnees.pipe(
+  map(x => x * 2),      // Transforme chaque valeur
+  filter(x => x > 10),  // Garde seulement certaines valeurs
+  tap(x => console.log(x))  // Effet secondaire (log)
+);
+```
+
+> 💡 **Pour les Interceptors**, on utilise principalement `pipe()` et `map()`.
+
+---
+
+# 🎁 L'Analogie : Le "Service d'Emballage Cadeau"
+
+Revenons à notre restaurant !
+
+<br>
+
+### 👨‍🍳 Le Chef (Controller)
+Il cuisine un burger. Il le pose sur le pass. Le burger est **nu, gras**, posé sur une assiette simple.
+
+### 🎀 L'Interceptor (Le Serveur Zélé)
+Il est posté entre la cuisine et la salle.
+
+- **AVANT (Request)** : Il note l'heure exacte où la commande part
+- **APRÈS (Response)** : Quand le Chef sort le burger, l'Interceptor **ne le donne pas direct au client**. Il l'attrape, le met dans une **belle boîte dorée**, ajoute une serviette, un bonbon à la menthe, et seulement après, il l'envoie au client.
+
+---
+
+# 🎯 Filter vs Interceptor : La Différence Clé
+
+| Aspect | Exception Filter 🚨 | Interceptor 🎁 |
+|--------|---------------------|----------------|
+| **Quand ?** | Quand ça se passe **MAL** (Erreur) | Quand ça se passe **BIEN** (Succès) |
+| **Rôle** | Attraper les erreurs | Transformer les réponses |
+
+<br>
+
+> 💡 **Rappel** : Le Filter est ton filet de sécurité. L'Interceptor est ton service d'emballage premium !
+
+---
+
+# 🤔 Pourquoi utiliser un Interceptor ?
+
+### 1. Standardisation des réponses (Le plus courant)
+> *"Hey, tes API renvoient parfois un tableau [], parfois un objet {}. C'est chiant. On veut que TOUTES les réponses soient dans un champ `data`."*
+> — Ton équipe Frontend 😤
+
+### 2. Mesure de performance
+Calculer combien de temps prend une requête (Start Time - End Time)
+
+### 3. Caching
+Si la requête est la même qu'il y a 2 secondes, renvoyer la réponse stockée sans déranger le Controller
+
+---
+
+# 🤔 Le Problème : Réponses API Incohérentes
+
+Ton équipe Frontend est frustrée...
 
 ```json
 // Endpoint 1: GET /users
@@ -268,81 +339,80 @@ Your frontend team is frustrated...
 [ { "id": 1 }, { "id": 2 } ]
 ```
 
-**Result**: Frontend has to handle 3 different response formats! 😤
+**Résultat** : Le Frontend doit gérer 3 formats différents ! 😤
 
 ---
 layout: center
 ---
 
-# Interceptors Lifecycle
+# Cycle de vie de l'Interceptor
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Interceptor (Pre)
-    participant Route Handler
-    participant Interceptor (Post)
+    participant Interceptor (Avant)
+    participant Controller
+    participant Interceptor (Après)
 
-    Client->>Interceptor (Pre): Request
-    Interceptor (Pre)->>Route Handler: handle()
-    Route Handler-->>Interceptor (Post): Response (Observable)
-    Interceptor (Post)-->>Client: Transformed Response
+    Client->>Interceptor (Avant): Requête
+    Interceptor (Avant)->>Controller: handle()
+    Controller-->>Interceptor (Après): Réponse (Observable)
+    Interceptor (Après)-->>Client: Réponse Transformée
 ```
 
 ---
 layout: center
 ---
 
-# Response Transformation
+# Transformation de la Réponse
 
 ````md magic-move
 ```ts
-// ❌ BEFORE: Raw response, no standard format
+// ❌ AVANT : Réponse brute, pas de format standard
 @Get(':id')
 async findOne(@Param('id') id: string) {
   return await this.usersService.findOne(id);
 }
-// Response: { "id": 1, "name": "John" }
+// Réponse: { "id": 1, "name": "John" }
 ```
 
 ```ts
-// ✅ AFTER: Wrapped response with metadata
+// ✅ APRÈS : Réponse enveloppée avec métadonnées
 @Get(':id')
 @UseInterceptors(TransformInterceptor)
 async findOne(@Param('id') id: string) {
   return await this.usersService.findOne(id);
 }
-// Response: { "data": { "id": 1, "name": "John" }, "statusCode": 200, "timestamp": "..." }
+// Réponse: { "data": { "id": 1, "name": "John" }, "statusCode": 200, "message": "..." }
 ```
 ````
 
 ---
-layout: two-cols
----
 
-# Implementing the Interceptor
+# 👨‍💻 Tutoriel : Créer le TransformInterceptor
 
-Every response wrapped in `{ data, statusCode, timestamp }`
-
-::right::
+### Étape 1 : Créer le fichier `src/transform.interceptor.ts`
 
 ```typescript
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+
+export interface Response<T> {
+  data: T;
+}
+
 @Injectable()
-export class TransformInterceptor<T> 
-  implements NestInterceptor<T, Response<T>> {
-  
-  intercept(
-    context: ExecutionContext, 
-    next: CallHandler
-  ): Observable<Response<T>> {
+export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<Response<T>> {
+    // "next.handle()" = l'exécution de ton Controller
+    // ".pipe()" = on touche à la réponse AVANT qu'elle parte
     
     return next.handle().pipe(
       map(data => ({ 
-        data, 
-        statusCode: context
-          .switchToHttp()
-          .getResponse().statusCode,
-        timestamp: new Date().toISOString()
+        data: data,
+        statusCode: context.switchToHttp().getResponse().statusCode,
+        message: 'Opération réussie ✅'
       }))
     );
   }
@@ -351,62 +421,85 @@ export class TransformInterceptor<T>
 
 ---
 
-# 📚 Syntax Breakdown: Interceptor
+# 🎉 Le Résultat (Wow Effect!)
 
-| Syntax | What it means |
-|--------|---------------|
-| `@Injectable()` | **Decorator**: Makes this class available for Dependency Injection |
-| `<T>` | **Generic**: T is a placeholder for ANY type (User, Product, etc.) |
-| `implements NestInterceptor<T, Response<T>>` | **Interface**: Input type `T`, Output type `Response<T>` |
-| `next.handle()` | **Observable**: The response stream from the route handler |
-| `.pipe(map(...))` | **RxJS**: Transform the stream before sending to client |
+Teste sur `http://localhost:3000/hello`
 
 <br>
 
-> 💡 **OOP Concept**: Generics (`<T>`) let us write ONE interceptor that works with ALL response types!
+### ❌ SANS Interceptor
+```text
+Hello World
+```
+
+### ✅ AVEC Interceptor
+```json
+{
+  "data": "Hello World",
+  "statusCode": 200,
+  "message": "Opération réussie ✅"
+}
+```
+
+> 💡 Le controller n'a **rien changé** ! L'Interceptor a fait tout le travail d'emballage 🎁
 
 ---
 
-# Applying Interceptors
+# 📚 Syntax Breakdown: Interceptor
 
-Same three levels as Filters:
+| Syntax | Ce que ça veut dire |
+|--------|---------------------|
+| `@Injectable()` | **Decorator** : Rend la classe disponible pour l'injection |
+| `<T>` | **Generic** : T = n'importe quel type (User, Product, etc.) |
+| `next.handle()` | **Observable** : Le flux de réponse du controller |
+| `.pipe(map(...))` | **RxJS** : Transforme le flux avant l'envoi au client |
+
+<br>
+
+> 💡 **Concept OOP** : Les Generics (`<T>`) nous permettent d'écrire UN interceptor qui fonctionne avec TOUS les types de réponse !
+
+---
+
+# Appliquer les Interceptors
+
+Même 3 niveaux que pour les Filters :
 
 ```typescript
-// 1. Method Scope
+// 1. Scope Méthode
 @Get()
 @UseInterceptors(TransformInterceptor)
 findAll() { ... }
 
-// 2. Controller Scope
+// 2. Scope Controller
 @Controller('cats')
 @UseInterceptors(TransformInterceptor)
 export class CatsController { ... }
 
-// 3. Global Scope (recommended for response format)
+// 3. Scope Global (recommandé pour le format de réponse)
 app.useGlobalInterceptors(new TransformInterceptor());
 ```
 
 ---
 
-# 🛠️ More Interceptor Use Cases
+# 🛠️ Autres cas d'utilisation
 
 ```typescript
-// 1. LoggingInterceptor - Measure request duration
+// 1. LoggingInterceptor - Mesurer la durée de requête
 intercept(context, next) {
   const start = Date.now();
   return next.handle().pipe(
-    tap(() => console.log(`Request took ${Date.now() - start}ms`))
+    tap(() => console.log(`Requête: ${Date.now() - start}ms`))
   );
 }
 
-// 2. CacheInterceptor - Return cached response
+// 2. CacheInterceptor - Retourner une réponse en cache
 intercept(context, next) {
   const cached = this.cache.get(key);
   if (cached) return of(cached);
   return next.handle().pipe(tap(data => this.cache.set(key, data)));
 }
 
-// 3. TimeoutInterceptor - Abort slow requests
+// 3. TimeoutInterceptor - Annuler les requêtes lentes
 intercept(context, next) {
   return next.handle().pipe(timeout(5000));
 }
