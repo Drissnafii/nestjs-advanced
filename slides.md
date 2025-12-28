@@ -514,7 +514,121 @@ layout: section
 
 ---
 
-# 🤔 The Problem: Repetitive Boilerplate
+# � L'Analogie : "L'Extracteur Chirurgical"
+
+Imagine que tu es un **chirurgien** (le Controller). Tu as besoin d'un scalpel (une donnée précise, ex: l'utilisateur connecté).
+
+<br>
+
+### ❌ SANS Décorateur (La méthode brute)
+L'infirmière te donne **toute la boîte à outils** (l'objet Request géant de Express). Tu dois fouiller dedans, ouvrir les tiroirs, trouver le scalpel (`req.user`), et reposer la boîte. C'est lourd et tu dépends de la boîte.
+
+```typescript
+getProfile(@Req() req) -> const user = req.user;
+```
+
+### ✅ AVEC Décorateur (La méthode classe)
+Tu tends juste la main et tu dis **"Scalpel !"** (`@User()`). L'infirmière (le Décorateur) a déjà fouillé la boîte pour toi et te dépose uniquement le scalpel dans la main. Tu ne vois même pas la boîte à outils.
+
+```typescript
+getProfile(@User() user)
+```
+
+---
+
+# 🎯 Pourquoi utiliser un Custom Decorator ?
+
+<br>
+
+### 🧹 Propreté (Clean Code)
+Ton controller **ne sait pas** qu'il utilise Express ou Fastify. Il reçoit juste un objet `User`.
+
+### 📖 Lisibilité
+`@User() user` c'est beaucoup plus clair que `req.user`.
+
+### ♻️ Réutilisabilité
+Si demain la façon de récupérer l'utilisateur change, tu changes **juste le décorateur**, pas tes 50 controllers.
+
+---
+
+# 👨‍💻 Tutoriel : Créer le Décorateur @User()
+
+> ⚠️ Normalement, l'objet `user` est ajouté à la requête par un système d'authentification (Guards + JWT). On va faire un petit "hack" pour simuler un utilisateur.
+
+<br>
+
+### Étape 1 : Créer le fichier `src/user.decorator.ts`
+
+```typescript
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export const User = createParamDecorator(
+  (data: unknown, ctx: ExecutionContext) => {
+    const request = ctx.switchToHttp().getRequest();
+    
+    // ⚠️ HACK POUR LA DEMO :
+    // Normalement, ici on fait juste : return request.user;
+    // Mais comme on n'a pas de AuthGuard, request.user est undefined.
+    // On va le simuler manuellement pour que tu voies que ça marche :
+    if (!request.user) {
+      request.user = { id: 1, username: 'Dendo', roles: ['admin'] };
+    }
+
+    return request.user;
+  },
+);
+```
+
+---
+
+# 👨‍💻 Tutoriel : Utiliser le Décorateur
+
+### Étape 2 : Modifier `src/app.controller.ts`
+
+```typescript
+import { Controller, Get } from '@nestjs/common';
+import { User } from './user.decorator'; // Importe ton décorateur
+
+@Controller()
+export class AppController {
+
+  @Get('profile')
+  // Regarde comme c'est propre ! Pas de @Req(), pas de dépendance à Express.
+  getProfile(@User() user: any) {
+    console.log('Le décorateur a extrait :', user);
+    return user;
+  }
+}
+```
+
+> 💡 Assure-toi que ton `TransformInterceptor` est toujours actif dans `main.ts` !
+
+---
+
+# ✅ Vérification
+
+Sauvegarde tout et va sur **http://localhost:3000/profile**
+
+<br>
+
+### Résultat attendu :
+```json
+{
+  "data": {
+    "id": 1,
+    "username": "Dendo",
+    "roles": ["admin"]
+  },
+  "statusCode": 200,
+  "message": "Opération réussie ✅"
+}
+```
+
+> 🎉 Le décorateur a extrait `user` pour toi, et l'Interceptor a emballé la réponse !
+
+---
+
+# �🤔 The Problem: Repetitive Boilerplate
 
 Every controller needs to access the authenticated user...
 
@@ -870,7 +984,7 @@ background: https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?q=80&w=
 ## Questions?
 
 **Key Takeaways:**
-- 🧹 **Exception Filters**: Centralize error handling
-- 🔄 **Interceptors**: Transform data in/out
-- 🎨 **Custom Decorators**: Clean, reusable code
-- 🏭 **Custom Providers**: Flexible dependency injection
+-  **Exception Filters**: Centralize error handling
+-  **Interceptors**: Transform data in/out
+-  **Custom Decorators**: Clean, reusable code
+-  **Custom Providers**: Flexible dependency injection
