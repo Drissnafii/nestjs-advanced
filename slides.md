@@ -790,6 +790,158 @@ layout: section
 
 ---
 
+# 🎉 Ton Interceptor fonctionne PARFAITEMENT !
+
+Tu as vu ce message ?
+```json
+"message": "Opération réussie ✅"
+```
+
+<br>
+
+### La preuve que tout marche :
+- ✅ Tu as le champ `data`
+- ✅ Tu as le champ `statusCode`
+- ✅ Tu as le champ `message`
+
+> 💡 Ces champs **n'existent pas par défaut** dans NestJS. C'est **ton code** qui les a ajoutés. Bravo !
+
+---
+
+# 🔋 L'Analogie : "La Batterie de la Voiture"
+
+Imagine que ton Controller est une **Voiture Télécommandée**. Elle a besoin d'une **Batterie** pour fonctionner.
+
+<br>
+
+### 🔌 Standard Provider (`@Injectable`)
+C'est la batterie **officielle de la marque**. NestJS la fabrique et la met dans la voiture automatiquement.
+```typescript
+providers: [AppService]  // Batterie d'origine
+```
+
+### 🔧 Custom Provider
+Parfois, tu veux **bricoler**. Tu veux mettre une **Super Batterie** ou une **Batterie de Test** bon marché.
+
+> *"Quand la voiture demande une 'Batterie', ne mets pas celle d'origine. Mets plutôt CE truc spécifique que je te donne."*
+
+---
+
+# 🎯 Pourquoi utiliser un Custom Provider ?
+
+<br>
+
+### ⚙️ Configuration (`useValue`)
+Injecter une URL de base de données ou une clé API **sans la coder en dur** dans les services.
+
+### 🧪 Tests / Mocking
+Remplacer le vrai "Service Paiement" (qui dépense de l'argent 💸) par un "Faux Service" qui dit juste "OK" pendant le développement.
+
+### 🏭 Dynamisme (`useFactory`)
+Créer une connexion à la base de données **UNIQUEMENT** si une certaine condition est remplie.
+
+---
+
+# 👨‍💻 Tutoriel : Créer la Config
+
+On va faire un cas simple : injecter une **config de base de données**.
+
+<br>
+
+### Étape 1 : Créer l'objet de configuration dans `src/app.module.ts`
+
+```typescript
+import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+
+// Imagine que c'est ta config de base de données
+const mockDbConfig = {
+  url: 'postgres://localhost:5432',
+  password: 'secret_password',
+  retryAttempts: 5
+};
+```
+
+---
+
+# 👨‍💻 Tutoriel : Enregistrer le Provider
+
+### Étape 1 (suite) : Ajouter le Custom Provider
+
+```typescript
+@Module({
+  imports: [],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    // 👇 VOICI LE CUSTOM PROVIDER
+    {
+      provide: 'DATABASE_CONFIG', // On donne un NOM (Token)
+      useValue: mockDbConfig,     // Quand on demande ce nom, donne cet OBJET
+    },
+  ],
+})
+export class AppModule {}
+```
+
+> 💡 Le token `'DATABASE_CONFIG'` est une **chaîne de caractères**. C'est ce qu'on utilisera pour l'injection.
+
+---
+
+# 👨‍💻 Tutoriel : Injecter le Provider
+
+### Étape 2 : Modifier `src/app.controller.ts`
+
+Comme ce n'est pas une classe, on utilise le décorateur `@Inject()`.
+
+```typescript
+import { Controller, Get, Inject } from '@nestjs/common'; // Ajoute Inject
+// ... autres imports
+
+@Controller()
+export class AppController {
+  constructor(
+    private readonly appService: AppService,
+    // 👇 On injecte notre Custom Provider ici
+    @Inject('DATABASE_CONFIG') private readonly dbConfig: any
+  ) {}
+
+  // ... tes autres routes ...
+
+  @Get('config')
+  getConfig() {
+    // On renvoie la config pour prouver qu'on l'a bien reçue
+    return this.dbConfig;
+  }
+}
+```
+
+---
+
+# ✅ Vérification
+
+Sauvegarde tout et va sur **http://localhost:3000/config**
+
+<br>
+
+### Résultat attendu (emballé par ton Interceptor !) :
+```json
+{
+  "data": {
+    "url": "postgres://localhost:5432",
+    "password": "secret_password",
+    "retryAttempts": 5
+  },
+  "statusCode": 200,
+  "message": "Opération réussie ✅"
+}
+```
+
+> 🎉 Tu viens d'injecter un objet de configuration via Custom Provider !
+
+---
+
 # 🤔 The Problem: Hardcoded Dependencies
 
 How do you swap implementations for testing or different environments?
